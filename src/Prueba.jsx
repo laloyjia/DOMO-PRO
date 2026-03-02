@@ -1,0 +1,1 @@
+export const Prueba = () => <div>Hola Mundo</div>;
