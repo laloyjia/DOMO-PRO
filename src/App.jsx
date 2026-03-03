@@ -9,61 +9,72 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserDashboard from "./pages/user/UserDashboard";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
+// IMPORTA TU PÁGINA DE PERSONAL AQUÍ (Ajusta la ruta si es necesario)
+import GestionPersonal from "./pages/admin/GestionPersonal"; 
+
 function App() {
-  const [session, setSession] = useState(undefined); // Empezamos en undefined para diferenciar de "no hay sesión"
+  const [session, setSession] = useState(undefined);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Escuchar cambios de autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
-      try {
-        setSession(currentSession);
-        
-        if (currentSession) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('name, role')
-            .eq('id', currentSession.user.id)
-            .single();
+    // Verificación inicial inmediata al recargar
+    const initializeAuth = async () => {
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      if (initialSession) {
+        await fetchProfile(initialSession);
+      } else {
+        setLoading(false);
+      }
+    };
 
-          if (error) {
-            console.warn("⚠️ Perfil no encontrado, usando valores por defecto");
-            setUserProfile({ name: currentSession.user.email, role: 'user' });
-          } else {
-            setUserProfile(data);
-          }
-        } else {
-          setUserProfile(null);
-        }
-      } catch (err) {
-        console.error("❌ Error crítico en Auth:", err);
-      } finally {
-        setLoading(false); // Detiene la pantalla de carga industrial
+    initializeAuth();
+
+    // Escuchar cambios de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      setSession(currentSession);
+      if (currentSession) {
+        await fetchProfile(currentSession);
+      } else {
+        setUserProfile(null);
+        setLoading(false);
       }
     });
 
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
+    return () => subscription?.unsubscribe();
   }, []);
 
-  const handleLogout = async () => {
+  // Función auxiliar para no repetir código
+  const fetchProfile = async (currentSession) => {
     try {
-      await supabase.auth.signOut();
-      localStorage.removeItem('domo_role');
-      window.location.href = "/login";
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, role')
+        .eq('id', currentSession.user.id)
+        .single();
+
+      if (error) {
+        setUserProfile({ name: currentSession.user.email, role: 'user' });
+      } else {
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.error("Error al cargar perfil:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Pantalla de carga industrial estilo Domo-Pro
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
+
   if (loading) return (
     <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center space-y-4">
-      <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
+      <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-500"></div>
       <p className="text-blue-500 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-        Iniciando Protocolos Domo-Pro...
+        Sincronizando Domo-Pro OS...
       </p>
     </div>
   );
@@ -71,13 +82,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* RUTA PÚBLICA */}
-        <Route 
-          path="/login" 
-          element={!session ? <Login /> : <Navigate to="/" replace />} 
-        />
+        <Route path="/login" element={!session ? <Login /> : <Navigate to="/" replace />} />
 
-        {/* RUTAS PROTEGIDAS ANIDADAS */}
         <Route
           path="/"
           element={
@@ -90,17 +96,22 @@ function App() {
             </ProtectedRoute>
           }
         >
-          {/* Redirección inicial basada en rol */}
           <Route index element={<RoleRedirect role={userProfile?.role} />} />
 
-          {/* Panel de Administración */}
+          {/* RUTAS DE ADMINISTRADOR */}
           <Route path="admin" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
 
-          {/* Panel de Usuario/Operador */}
+          {/* NUEVA RUTA: GESTIÓN DE PERSONAL */}
+          <Route path="admin/personal" element={
+            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
+              <GestionPersonal />
+            </ProtectedRoute>
+          } />
+
           <Route path="user" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['user', 'admin']}>
               <UserDashboard />
@@ -108,7 +119,6 @@ function App() {
           } />
         </Route>
 
-        {/* Captura de rutas no encontradas */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
