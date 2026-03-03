@@ -1,77 +1,113 @@
 import React from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, Settings, LogOut, 
-  Shield, ChevronRight 
+  Shield, ChevronRight, Home
 } from 'lucide-react';
 
-const DashboardLayout = ({ children, userRole, userName, activeTab, setActiveTab, onLogout }) => {
+const DashboardLayout = ({ userRole, userName, onLogout }) => {
   
-  // MENU FILTRADO: Solo Panel, Usuarios y Configuración
+  const roleNormalizado = userRole?.toLowerCase() || 'user';
+
+  // MENU CONFIGURABLE: Ahora usamos 'to' para las rutas reales
   const menuItems = [
-    { id: 'stats', label: 'Panel General', icon: <LayoutDashboard size={20} />, roles: ['admin', 'operador', 'visualizador'] },
-    { id: 'users', label: 'Gestión Personal', icon: <Users size={20} />, roles: ['admin'] },
-    { id: 'config', label: 'Configuración', icon: <Settings size={20} />, roles: ['admin'] }
+    { 
+      id: 'dashboard', 
+      label: 'Panel General', 
+      icon: <LayoutDashboard size={20} />, 
+      to: roleNormalizado === 'admin' ? '/admin' : '/user',
+      roles: ['admin', 'user'] 
+    },
+    { 
+      id: 'users', 
+      label: 'Gestión Personal', 
+      icon: <Users size={20} />, 
+      to: '/admin/users', // Ejemplo de subruta
+      roles: ['admin'] 
+    },
+    { 
+      id: 'config', 
+      label: 'Configuración', 
+      icon: <Settings size={20} />, 
+      to: '/config', 
+      roles: ['admin', 'user'] 
+    }
   ];
 
-  const roleNormalizado = userRole?.toLowerCase() || 'visualizador';
-
   return (
-    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
-      <aside className="w-72 bg-slate-900 flex flex-col shadow-2xl z-20">
-        <div className="p-8 border-b border-white/10">
+    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
+      {/* SIDEBAR */}
+      <aside className="w-72 bg-slate-900 flex flex-col shadow-[10px_0_30px_rgba(0,0,0,0.3)] z-20">
+        
+        {/* Logo & Identidad */}
+        <div className="p-8 border-b border-white/5">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/40">
               <Shield className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-white font-black tracking-tighter text-xl leading-none italic">DOMO-PRO</h1>
-              <span className="text-[9px] text-blue-400 font-black uppercase tracking-[0.3em] font-mono">Control System</span>
+              <h1 className="text-white font-black tracking-tighter text-xl leading-none italic uppercase">DOMO-PRO</h1>
+              <span className="text-[9px] text-blue-400 font-black uppercase tracking-[0.3em] font-mono">OS v2.5</span>
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-white/10 to-transparent rounded-2xl p-4 border border-white/10">
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 italic">Sesión Activa</p>
-            <p className="text-white font-bold text-sm truncate">{userName || 'Operador'}</p>
+          {/* User Badge mejorado */}
+          <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+            <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Operador Autenticado</p>
+            <p className="text-white font-bold text-sm truncate">{userName || 'Sistema'}</p>
             <div className="flex items-center gap-2 mt-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-md text-[9px] font-black uppercase">
-                {roleNormalizado}
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg text-[9px] font-black uppercase">
+                Terminal: {roleNormalizado}
               </span>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
+        {/* Navegación con NavLink (detecta automáticamente la ruta activa) */}
+        <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
           {menuItems.filter(item => item.roles.includes(roleNormalizado)).map((item) => (
-            <button
+            <NavLink
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-300 group ${
-                activeTab === item.id 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40 translate-x-1' 
-                : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
+              to={item.to}
+              className={({ isActive }) => `
+                w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-300 group
+                ${isActive 
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40 translate-x-1' 
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }
+              `}
             >
               <div className="flex items-center gap-3">
-                {item.icon}
+                <span className="transition-transform group-hover:scale-110 duration-300">
+                  {item.icon}
+                </span>
                 <span className="font-bold text-sm tracking-tight">{item.label}</span>
               </div>
-              <ChevronRight size={14} className={`${activeTab === item.id ? 'opacity-100' : 'opacity-0'} transition-all`} />
-            </button>
+              <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all" />
+            </NavLink>
           ))}
         </nav>
 
-        <div className="p-6 border-t border-white/10">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 p-4 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-2xl transition-all font-black text-[11px] uppercase group active:scale-95">
+        {/* Footer / Logout */}
+        <div className="p-6 border-t border-white/5">
+          <button 
+            onClick={onLogout} 
+            className="w-full flex items-center gap-3 p-4 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-2xl transition-all font-black text-[11px] uppercase group active:scale-95"
+          >
             <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" />
-            <span>Desconectar Nodo</span>
+            <span>Cerrar Conexión</span>
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-slate-50">
-        <div className="p-8 max-w-7xl mx-auto animate-in fade-in duration-700">
-          {children}
+      {/* ÁREA DE CONTENIDO */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="p-8 max-w-7xl mx-auto">
+          {/* Outlet es donde React Router renderiza el componente de la ruta activa */}
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <Outlet /> 
+          </div>
         </div>
       </main>
     </div>
