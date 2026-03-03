@@ -1,41 +1,12 @@
-import React, { useEffect, useState } from 'react'; // <-- LÍNEA AGREGADA
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
 import { Loader2 } from 'lucide-react';
 
-const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
+const ProtectedRoute = ({ children, session, userRole, allowedRoles = [] }) => {
   const location = useLocation();
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          setLoading(false);
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
-
-        setUserRole(profile?.role || 'user');
-      } catch (error) {
-        console.error("Error en Auth Guard:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  if (loading) {
+  // 1. Si todavía no sabemos si hay sesión (App.jsx sigue cargando)
+  if (session === undefined) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-500" size={40} />
@@ -43,14 +14,18 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     );
   }
 
-  if (!userRole && !loading) {
+  // 2. Si definitivamente no hay sesión iniciada
+  if (!session) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // 3. Si hay sesión pero el rol no es el permitido
   if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
-    return <Navigate to="/unauthorized" replace />;
+    // Si es admin intentando entrar a ruta de usuario o viceversa
+    return <Navigate to="/" replace />; 
   }
 
+  // 4. Si todo está bien, mostrar el contenido
   return children;
 };
 

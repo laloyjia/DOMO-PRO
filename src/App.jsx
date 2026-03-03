@@ -10,18 +10,17 @@ import UserDashboard from "./pages/user/UserDashboard";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(undefined); // Empezamos en undefined para diferenciar de "no hay sesión"
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Escuchar cambios de autenticación con manejo de errores robusto
+    // 1. Escuchar cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       try {
         setSession(currentSession);
         
         if (currentSession) {
-          // Si hay sesión, buscamos el perfil
           const { data, error } = await supabase
             .from('profiles')
             .select('name, role')
@@ -29,8 +28,7 @@ function App() {
             .single();
 
           if (error) {
-            console.warn("⚠️ Perfil no encontrado en la tabla 'profiles':", error.message);
-            // Si no hay perfil, creamos un estado temporal para evitar el bloqueo
+            console.warn("⚠️ Perfil no encontrado, usando valores por defecto");
             setUserProfile({ name: currentSession.user.email, role: 'user' });
           } else {
             setUserProfile(data);
@@ -39,10 +37,9 @@ function App() {
           setUserProfile(null);
         }
       } catch (err) {
-        console.error("❌ Error crítico en el flujo de Auth:", err);
+        console.error("❌ Error crítico en Auth:", err);
       } finally {
-        // ELIMINA EL CARGA INFINITO: Siempre termina el loading
-        setLoading(false);
+        setLoading(false); // Detiene la pantalla de carga industrial
       }
     });
 
@@ -80,11 +77,11 @@ function App() {
           element={!session ? <Login /> : <Navigate to="/" replace />} 
         />
 
-        {/* RUTAS PROTEGIDAS */}
+        {/* RUTAS PROTEGIDAS ANIDADAS */}
         <Route
           path="/"
           element={
-            <ProtectedRoute session={session}>
+            <ProtectedRoute session={session} userRole={userProfile?.role}>
               <DashboardLayout 
                 userName={userProfile?.name || 'Usuario'} 
                 userRole={userProfile?.role || 'user'} 
@@ -93,34 +90,33 @@ function App() {
             </ProtectedRoute>
           }
         >
-          {/* Redirección automática según rol */}
+          {/* Redirección inicial basada en rol */}
           <Route index element={<RoleRedirect role={userProfile?.role} />} />
 
-          {/* Rutas de Administrador */}
+          {/* Panel de Administración */}
           <Route path="admin" element={
-            <ProtectedRoute session={session} allowedRoles={['admin']}>
+            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
 
-          {/* Rutas de Usuario */}
+          {/* Panel de Usuario/Operador */}
           <Route path="user" element={
-            <ProtectedRoute session={session} allowedRoles={['user', 'admin']}>
+            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['user', 'admin']}>
               <UserDashboard />
             </ProtectedRoute>
           } />
         </Route>
 
-        {/* Fallback general */}
+        {/* Captura de rutas no encontradas */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );
 }
 
-// Componente auxiliar de redirección
 const RoleRedirect = ({ role }) => {
-  if (!role) return <div className="p-10 text-white">Cargando permisos...</div>;
+  if (!role) return null;
   return role === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/user" replace />;
 };
 
