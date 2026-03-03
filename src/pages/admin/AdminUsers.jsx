@@ -3,28 +3,22 @@ import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { 
   UserPlus, FileUp, X, Check, Loader2, 
-  Trash2, Shield, User, Mail, Key, Download, AlertCircle, Edit3
+  Trash2, Shield, User, Mail, Key, Download, Edit3, Building2
 } from 'lucide-react';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [mode, setMode] = useState('manual'); // 'manual', 'bulk', 'edit'
+  const [mode, setMode] = useState('manual'); 
   const [editingId, setEditingId] = useState(null);
 
   const [formData, setFormData] = useState({
-    name: '', username: '', email: '', role: 'Operador', temp_password: ''
+    name: '', username: '', email: '', role: 'user', dep: 'Soporte', temp_password: ''
   });
 
   useEffect(() => {
     fetchUsers();
-    const channel = supabase.channel('profiles-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        fetchUsers();
-      }).subscribe();
-    
-    return () => supabase.removeChannel(channel);
   }, []);
 
   const fetchUsers = async () => {
@@ -37,7 +31,6 @@ const AdminUsers = () => {
       setFormData({ ...formData, name: val });
       return;
     }
-    
     const cleanName = val.toLowerCase().trim().replace(/\s+/g, '.').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const generatedPass = Math.random().toString(36).slice(-8).toUpperCase();
     
@@ -45,89 +38,85 @@ const AdminUsers = () => {
       ...formData,
       name: val,
       username: cleanName,
-      email: val ? `${cleanName}@domo.pro` : '',
+      email: val ? `${cleanName}@domopro.cl` : '',
       temp_password: generatedPass
     });
-  };
-
-  const downloadTemplate = () => {
-    const templateData = [{ name: 'Ejemplo Nombre', email: 'ejemplo@domo.pro', role: 'Operador', username: 'ejemplo.user', temp_password: 'TEMP123' }];
-    const ws = XLSX.utils.json_to_sheet(templateData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
-    XLSX.writeFile(wb, "Plantilla_Carga_DomoPro.xlsx");
-  };
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        setLoading(true);
-        const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        const { error } = await supabase.from('profiles').insert(data);
-        if (error) throw error;
-        setShowModal(false);
-        fetchUsers();
-      } catch (err) { alert("Error: " + err.message); } finally { setLoading(false); }
-    };
-    reader.readAsBinaryString(file);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
-    if (mode === 'edit') {
-      const { error } = await supabase.from('profiles').update(formData).eq('id', editingId);
-      if (error) alert(error.message);
-    } else {
-      const { error } = await supabase.from('profiles').insert([formData]);
-      if (error) alert(error.message);
+
+    try {
+      if (mode === 'edit') {
+        const { error } = await supabase.from('profiles').update({
+          name: formData.name,
+          role: formData.role,
+          dep: formData.dep,
+          username: formData.username
+        }).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        // CREACIÓN EN AUTH + TRIGGER AUTOMÁTICO EN PROFILES
+        const { error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.temp_password,
+          options: {
+            data: {
+              name: formData.name,
+              role: formData.role,
+              dep: formData.dep,
+              username: formData.username,
+              temp_password: formData.temp_password
+            }
+          }
+        });
+        if (error) throw error;
+        alert("Operador registrado en el sistema Domo-Pro");
+      }
+      
+      setShowModal(false);
+      fetchUsers();
+    } catch (err) {
+      alert("Error de sistema: " + err.message);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
-    setShowModal(false);
-    setFormData({ name: '', username: '', email: '', role: 'Operador', temp_password: '' });
   };
 
   const openEdit = (user) => {
     setMode('edit');
     setEditingId(user.id);
     setFormData({
-      name: user.name,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      temp_password: user.temp_password
+      name: user.name || '',
+      username: user.username || '',
+      email: user.email || '',
+      role: user.role || 'user',
+      dep: user.dep || 'Soporte',
+      temp_password: user.temp_password || ''
     });
     setShowModal(true);
   };
 
   const deleteUser = async (id) => {
-    if (window.confirm("¿Confirmar eliminación de este acceso biométrico?")) {
+    if (window.confirm("¿Confirmar baja definitiva de este operador?")) {
       const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) alert("Error: " + error.message);
+      if (error) alert(error.message);
       else fetchUsers();
     }
   };
 
   return (
-    <div className="p-4 space-y-4 font-sans max-w-6xl mx-auto">
+    <div className="p-4 space-y-6 max-w-6xl mx-auto">
       {/* HEADER */}
-      <div className="flex justify-between items-end border-b border-slate-200 pb-6">
+      <div className="flex justify-between items-end border-b border-white/10 pb-6">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Gestión de Personal</h2>
-          <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-1">Directorio de Seguridad Domo-Pro</p>
+          <h2 className="text-3xl font-black text-white tracking-tighter italic uppercase">Gestión de Personal</h2>
+          <p className="text-[10px] text-blue-500 font-bold uppercase tracking-[0.3em] mt-1">Terminal de Control de Usuarios</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => { setMode('bulk'); setShowModal(true); }} className="flex items-center gap-2 px-5 py-2.5 bg-white border-2 border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all">
-            <FileUp size={16} /> Carga Masiva
-          </button>
-          <button onClick={() => { setMode('manual'); setShowModal(true); setFormData({name:'', username:'', email:'', role:'Operador', temp_password:''}); }} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-blue-600 shadow-xl shadow-slate-200 transition-all">
+          <button onClick={() => { setMode('manual'); setShowModal(true); setFormData({name:'', username:'', email:'', role:'user', dep:'Soporte', temp_password:''}); }} 
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20">
             <UserPlus size={16} /> Registro Manual
           </button>
         </div>
@@ -135,101 +124,96 @@ const AdminUsers = () => {
 
       {/* MODAL */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200">
-            <div className="bg-slate-900 px-8 py-6 flex justify-between items-center text-white">
-              <h3 className="font-black uppercase text-xs tracking-widest">
-                {mode === 'manual' ? 'Alta de Usuario' : mode === 'edit' ? 'Editar Perfil' : 'Importación Excel'}
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center">
+              <h3 className="text-white font-black uppercase text-xs tracking-[0.2em]">
+                {mode === 'edit' ? 'Modificar Credenciales' : 'Nuevo Acceso Domo-Pro'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="bg-white/10 p-2 rounded-full hover:bg-red-500 transition-colors"><X size={18}/></button>
+              <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
             </div>
 
-            <div className="p-8">
-              {mode !== 'bulk' ? (
-                <form onSubmit={handleSave} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
-                    <input required value={formData.name} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none transition-all" />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">ID Usuario</label>
-                      <input value={formData.username} readOnly={mode !== 'edit'} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full bg-slate-100 border-none rounded-xl p-3 text-xs font-mono font-bold text-slate-500" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pass Temporal</label>
-                      <input value={formData.temp_password} readOnly={mode !== 'edit'} onChange={(e) => setFormData({...formData, temp_password: e.target.value})} className="w-full bg-amber-50 border-2 border-amber-100 rounded-xl p-3 text-xs font-mono font-black text-amber-700 uppercase" />
-                    </div>
-                  </div>
+            <form onSubmit={handleSave} className="p-8 space-y-5">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nombre del Operador</label>
+                <input required value={formData.name} onChange={(e) => handleNameChange(e.target.value)} 
+                  className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-sm font-bold focus:border-blue-500 outline-none" />
+              </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
-                    <input value={formData.email} readOnly={mode !== 'edit'} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-100 border-none rounded-xl p-3 text-xs font-bold text-slate-500" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rol de Acceso</label>
-                    <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none">
-                      <option>Admin</option>
-                      <option>Operador</option>
-                      <option>Visualizador</option>
-                    </select>
-                  </div>
-
-                  <button disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
-                    {loading ? <Loader2 className="animate-spin" /> : <><Check size={18}/> {mode === 'edit' ? 'Actualizar' : 'Confirmar Registro'}</>}
-                  </button>
-                </form>
-              ) : (
-                <div className="space-y-6">
-                  <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-[2rem] hover:border-blue-500 bg-slate-50 relative">
-                    <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    <FileUp size={32} className="mx-auto text-blue-500 mb-2" />
-                    <p className="text-xs font-black text-slate-700 uppercase">Soltar Excel</p>
-                  </div>
-                  <button onClick={downloadTemplate} className="w-full flex items-center justify-center gap-2 py-3 bg-white border-2 border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase hover:text-blue-600 transition-all shadow-sm">
-                    <Download size={14} /> Descargar Plantilla Oficial
-                  </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Departamento</label>
+                  <select value={formData.dep} onChange={e => setFormData({...formData, dep: e.target.value})} 
+                    className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-xs font-bold focus:border-blue-500 outline-none">
+                    <option value="Soporte">Soporte</option>
+                    <option value="Operaciones">Operaciones</option>
+                    <option value="Administración">Administración</option>
+                    <option value="Seguridad">Seguridad</option>
+                  </select>
                 </div>
-              )}
-            </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nivel de Acceso</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} 
+                    className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-xs font-bold focus:border-blue-500 outline-none text-blue-400">
+                    <option value="admin">Administrador</option>
+                    <option value="user">Operador</option>
+                    <option value="viewer">Visualizador</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-3">
+                 <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-bold uppercase">ID: {formData.username || '---'}</span>
+                    <span className="text-blue-400 font-mono font-bold">PASS: {formData.temp_password || '---'}</span>
+                 </div>
+                 <p className="text-[9px] text-slate-400 italic">El email de acceso será: {formData.email || '---'}</p>
+              </div>
+
+              <button disabled={loading} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-500 transition-all flex items-center justify-center gap-2">
+                {loading ? <Loader2 className="animate-spin" /> : <><Check size={18}/> {mode === 'edit' ? 'Actualizar Perfil' : 'Activar Usuario'}</>}
+              </button>
+            </form>
           </div>
         </div>
       )}
 
-      {/* TABLA */}
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-xs">
+      {/* TABLA INDUSTRIAL */}
+      <div className="bg-slate-900/50 border border-white/5 rounded-[2rem] overflow-hidden backdrop-blur-md shadow-2xl">
+        <table className="w-full text-left">
           <thead>
-            <tr className="bg-slate-50/50 border-b border-slate-200">
-              <th className="px-8 py-5 font-black text-slate-400 uppercase tracking-widest text-[9px]">Operador / Sistema</th>
-              <th className="px-8 py-5 font-black text-slate-400 uppercase tracking-widest text-[9px]">Nivel</th>
-              <th className="px-8 py-5 font-black text-slate-400 uppercase tracking-widest text-[9px] text-right">Gestión</th>
+            <tr className="bg-white/5 border-b border-white/5">
+              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest">Operador / Depto</th>
+              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest">Email de Acceso</th>
+              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-white/5 text-sm">
             {users.map(u => (
-              <tr key={u.id} className="hover:bg-slate-50/80 transition-all group">
-                <td className="px-8 py-4">
+              <tr key={u.id} className="hover:bg-white/[0.02] transition-all group">
+                <td className="px-8 py-5">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xs uppercase">{u.name.substring(0,2)}</div>
+                    <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center font-black text-xs uppercase shadow-inner">
+                      {u.name ? u.name.substring(0,2) : '??'}
+                    </div>
                     <div>
-                      <p className="font-black text-slate-800 text-sm uppercase tracking-tight">{u.name}</p>
-                      <p className="text-[10px] text-slate-400 font-mono italic">{u.username} | {u.email}</p>
+                      <p className="font-bold text-slate-200 uppercase tracking-tight">{u.name || 'Sin nombre'}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="px-2 py-0.5 bg-slate-800 text-slate-400 text-[8px] font-black uppercase rounded border border-white/5 tracking-tighter">
+                          {u.dep || 'General'}
+                        </span>
+                        <span className={`text-[8px] font-black uppercase tracking-tighter ${u.role === 'admin' ? 'text-blue-500' : 'text-slate-500'}`}>
+                          {u.role}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </td>
-                <td className="px-8 py-4">
-                  <div className="flex items-center gap-2">
-                    <Shield size={12} className={u.role === 'Admin' ? 'text-red-500' : 'text-slate-400'} />
-                    <span className={`font-black text-[10px] uppercase tracking-widest ${u.role === 'Admin' ? 'text-red-600' : 'text-slate-500'}`}>{u.role}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(u)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit3 size={18} /></button>
-                    <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={18} /></button>
+                <td className="px-8 py-5 font-mono text-xs text-slate-400">{u.email}</td>
+                <td className="px-8 py-5 text-right">
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => openEdit(u)} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"><Edit3 size={18} /></button>
+                    <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 size={18} /></button>
                   </div>
                 </td>
               </tr>
