@@ -1,5 +1,5 @@
+import React, { useEffect, useState } from 'react'; // <-- LÍNEA AGREGADA
 import { Navigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Loader2 } from 'lucide-react';
 
@@ -18,7 +18,6 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
           return;
         }
 
-        // Consultamos el rol en la base de datos
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -44,12 +43,10 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     );
   }
 
-  // Si no hay sesión, al Login
   if (!userRole && !loading) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Si el rol no está permitido para esta ruta
   if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
     return <Navigate to="/unauthorized" replace />;
   }

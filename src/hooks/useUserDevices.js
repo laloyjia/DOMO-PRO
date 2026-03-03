@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // <-- LÍNEA AGREGADA
 import { supabase } from '../lib/supabase';
 
 export const useUserDevices = () => {
