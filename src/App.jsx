@@ -15,35 +15,59 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Escuchar cambios de autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      
-      if (session) {
-        // Si hay sesión, buscamos el perfil para tener el nombre y el rol
-        const { data } = await supabase
-          .from('profiles')
-          .select('name, role')
-          .eq('id', session.user.id)
-          .single();
-        setUserProfile(data);
-      } else {
-        setUserProfile(null);
+    // 1. Escuchar cambios de autenticación con manejo de errores robusto
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      try {
+        setSession(currentSession);
+        
+        if (currentSession) {
+          // Si hay sesión, buscamos el perfil
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('name, role')
+            .eq('id', currentSession.user.id)
+            .single();
+
+          if (error) {
+            console.warn("⚠️ Perfil no encontrado en la tabla 'profiles':", error.message);
+            // Si no hay perfil, creamos un estado temporal para evitar el bloqueo
+            setUserProfile({ name: currentSession.user.email, role: 'user' });
+          } else {
+            setUserProfile(data);
+          }
+        } else {
+          setUserProfile(null);
+        }
+      } catch (err) {
+        console.error("❌ Error crítico en el flujo de Auth:", err);
+      } finally {
+        // ELIMINA EL CARGA INFINITO: Siempre termina el loading
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/login";
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem('domo_role');
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    }
   };
 
+  // Pantalla de carga industrial estilo Domo-Pro
   if (loading) return (
-    <div className="h-screen w-full bg-slate-900 flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500"></div>
+    <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center space-y-4">
+      <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
+      <p className="text-blue-500 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
+        Iniciando Protocolos Domo-Pro...
+      </p>
     </div>
   );
 
@@ -56,49 +80,47 @@ function App() {
           element={!session ? <Login /> : <Navigate to="/" replace />} 
         />
 
-        {/* RUTAS PROTEGIDAS (Anidadas dentro del Layout) */}
+        {/* RUTAS PROTEGIDAS */}
         <Route
           path="/"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute session={session}>
               <DashboardLayout 
-                userName={userProfile?.name} 
-                userRole={userProfile?.role} 
+                userName={userProfile?.name || 'Usuario'} 
+                userRole={userProfile?.role || 'user'} 
                 onLogout={handleLogout} 
               />
             </ProtectedRoute>
           }
         >
-          {/* Redirección automática según rol al entrar a "/" */}
+          {/* Redirección automática según rol */}
           <Route index element={<RoleRedirect role={userProfile?.role} />} />
 
           {/* Rutas de Administrador */}
           <Route path="admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute session={session} allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
 
           {/* Rutas de Usuario */}
           <Route path="user" element={
-            <ProtectedRoute allowedRoles={['user', 'admin']}>
+            <ProtectedRoute session={session} allowedRoles={['user', 'admin']}>
               <UserDashboard />
             </ProtectedRoute>
           } />
-          
-          {/* Aquí puedes añadir más como path="config" o path="admin/users" */}
         </Route>
 
-        {/* Fallback */}
+        {/* Fallback general */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );
 }
 
-// Auxiliar para redirigir al entrar a la raíz
+// Componente auxiliar de redirección
 const RoleRedirect = ({ role }) => {
-  if (!role) return null;
+  if (!role) return <div className="p-10 text-white">Cargando permisos...</div>;
   return role === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/user" replace />;
 };
 
