@@ -2,15 +2,17 @@ import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 
-// Componentes y Páginas
+// Layouts y Auth
 import DashboardLayout from "./layouts/DashboardLayout";
 import Login from "./pages/Login";
-import AdminDashboard from "./pages/admin/AdminDashboard"; 
-import UserDashboard from "./pages/user/UserDashboard";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
-// IMPORTA TU PÁGINA DE PERSONAL AQUÍ (Ajusta la ruta si es necesario)
-import GestionPersonal from "./pages/admin/GestionPersonal"; 
+// PÁGINAS (Basado en tu imagen de carpetas)
+import AdminDashboard from "./pages/admin/AdminDashboard"; 
+import AdminUsers from "./pages/admin/AdminUsers"; // <--- Esta es tu Gestión de Personal
+import AdminProperties from "./pages/admin/AdminProperties";
+import AdminStats from "./pages/admin/AdminStats";
+import UserDashboard from "./pages/user/UserDashboard";
 
 function App() {
   const [session, setSession] = useState(undefined);
@@ -18,7 +20,6 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Verificación inicial inmediata al recargar
     const initializeAuth = async () => {
       const { data: { session: initialSession } } = await supabase.auth.getSession();
       if (initialSession) {
@@ -30,7 +31,6 @@ function App() {
 
     initializeAuth();
 
-    // Escuchar cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       setSession(currentSession);
       if (currentSession) {
@@ -44,22 +44,17 @@ function App() {
     return () => subscription?.unsubscribe();
   }, []);
 
-  // Función auxiliar para no repetir código
   const fetchProfile = async (currentSession) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('name, role')
         .eq('id', currentSession.user.id)
         .single();
 
-      if (error) {
-        setUserProfile({ name: currentSession.user.email, role: 'user' });
-      } else {
-        setUserProfile(data);
-      }
+      setUserProfile(data || { name: currentSession.user.email, role: 'user' });
     } catch (err) {
-      console.error("Error al cargar perfil:", err);
+      console.error("Error:", err);
     } finally {
       setLoading(false);
     }
@@ -73,8 +68,8 @@ function App() {
   if (loading) return (
     <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center space-y-4">
       <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-500"></div>
-      <p className="text-blue-500 font-black text-[10px] uppercase tracking-[0.3em] animate-pulse">
-        Sincronizando Domo-Pro OS...
+      <p className="text-blue-500 font-bold text-[10px] tracking-widest animate-pulse uppercase">
+        Iniciando Protocolos Domo-Pro...
       </p>
     </div>
   );
@@ -98,17 +93,23 @@ function App() {
         >
           <Route index element={<RoleRedirect role={userProfile?.role} />} />
 
-          {/* RUTAS DE ADMINISTRADOR */}
+          {/* RUTAS DE ADMIN BASADAS EN TU IMAGEN */}
           <Route path="admin" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
 
-          {/* NUEVA RUTA: GESTIÓN DE PERSONAL */}
-          <Route path="admin/personal" element={
+          {/* GESTIÓN DE PERSONAL / USUARIOS */}
+          <Route path="admin/users" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
-              <GestionPersonal />
+              <AdminUsers />
+            </ProtectedRoute>
+          } />
+
+          <Route path="admin/properties" element={
+            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
+              <AdminProperties />
             </ProtectedRoute>
           } />
 
