@@ -7,11 +7,13 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
-// PÁGINAS (Basado en tu imagen de carpetas)
+// PÁGINAS ADMINISTRACIÓN
 import AdminDashboard from "./pages/admin/AdminDashboard"; 
-import AdminUsers from "./pages/admin/AdminUsers"; // <--- Esta es tu Gestión de Personal
-import AdminProperties from "./pages/admin/AdminProperties";
-import AdminStats from "./pages/admin/AdminStats";
+import AdminUsers from "./pages/admin/AdminUsers"; 
+import AdminDeps from "./pages/admin/AdminDeps";      
+import AdminHistory from "./pages/admin/AdminHistory"; 
+
+// PÁGINAS USUARIO
 import UserDashboard from "./pages/user/UserDashboard";
 
 function App() {
@@ -21,10 +23,16 @@ function App() {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-      if (initialSession) {
-        await fetchProfile(initialSession);
-      } else {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        setSession(initialSession);
+        if (initialSession) {
+          await fetchProfile(initialSession.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error inicializando:", error);
         setLoading(false);
       }
     };
@@ -34,7 +42,7 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       setSession(currentSession);
       if (currentSession) {
-        await fetchProfile(currentSession);
+        await fetchProfile(currentSession.user.id);
       } else {
         setUserProfile(null);
         setLoading(false);
@@ -44,32 +52,46 @@ function App() {
     return () => subscription?.unsubscribe();
   }, []);
 
-  const fetchProfile = async (currentSession) => {
+  const fetchProfile = async (userId) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('name, role')
-        .eq('id', currentSession.user.id)
+        .eq('id', userId)
         .single();
 
-      setUserProfile(data || { name: currentSession.user.email, role: 'user' });
+      if (error) throw error;
+      setUserProfile(data);
     } catch (err) {
-      console.error("Error:", err);
+      console.error("Error al obtener perfil:", err);
+      // Fallback para evitar bloqueo de UI
+      setUserProfile({ name: 'Operador', role: 'user' });
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/login";
+    try {
+      setLoading(true);
+      await supabase.auth.signOut();
+      setSession(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error("Error al salir:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) return (
     <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center space-y-4">
-      <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-500"></div>
-      <p className="text-blue-500 font-bold text-[10px] tracking-widest animate-pulse uppercase">
-        Iniciando Protocolos Domo-Pro...
+      <div className="relative">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="absolute inset-0 m-auto h-8 w-8 bg-blue-500/20 rounded-full animate-pulse"></div>
+      </div>
+      <p className="text-blue-500 font-black text-[10px] tracking-[0.4em] animate-pulse uppercase italic">
+        Sincronizando Terminal Domo-Pro...
       </p>
     </div>
   );
@@ -84,7 +106,7 @@ function App() {
           element={
             <ProtectedRoute session={session} userRole={userProfile?.role}>
               <DashboardLayout 
-                userName={userProfile?.name || 'Usuario'} 
+                userName={userProfile?.name || 'Operador'} 
                 userRole={userProfile?.role || 'user'} 
                 onLogout={handleLogout} 
               />
@@ -93,23 +115,27 @@ function App() {
         >
           <Route index element={<RoleRedirect role={userProfile?.role} />} />
 
-          {/* RUTAS DE ADMIN BASADAS EN TU IMAGEN */}
           <Route path="admin" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           } />
 
-          {/* GESTIÓN DE PERSONAL / USUARIOS */}
           <Route path="admin/users" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminUsers />
             </ProtectedRoute>
           } />
 
-          <Route path="admin/properties" element={
+          <Route path="admin/deps" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
-              <AdminProperties />
+              <AdminDeps />
+            </ProtectedRoute>
+          } />
+
+          <Route path="admin/history" element={
+            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
+              <AdminHistory />
             </ProtectedRoute>
           } />
 

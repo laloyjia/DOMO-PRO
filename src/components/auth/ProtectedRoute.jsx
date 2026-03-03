@@ -1,31 +1,27 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children, session, userRole, allowedRoles = [] }) => {
   const location = useLocation();
 
-  // 1. Si todavía no sabemos si hay sesión (App.jsx sigue cargando)
-  if (session === undefined) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500" size={40} />
-      </div>
-    );
-  }
+  // Si App.jsx está determinando la sesión, no hacemos nada (App.jsx muestra el loading)
+  if (session === undefined) return null;
 
-  // 2. Si definitivamente no hay sesión iniciada
+  // Si no hay sesión, al login
   if (!session) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 3. Si hay sesión pero el rol no es el permitido
+  // Si hay sesión pero aún no carga el rol (perfil), esperamos
+  if (allowedRoles.length > 0 && !userRole) {
+    return null;
+  }
+
+  // Si el rol no está permitido para esta ruta
   if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
-    // Si es admin intentando entrar a ruta de usuario o viceversa
     return <Navigate to="/" replace />; 
   }
 
-  // 4. Si todo está bien, mostrar el contenido
   return children;
 };
 
