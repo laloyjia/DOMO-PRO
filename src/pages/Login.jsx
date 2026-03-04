@@ -23,7 +23,10 @@ const Login = () => {
     setError(null);
 
     try {
-      // 1. Autenticación en Supabase Auth
+      // 1. HARD RESET: Limpiamos cualquier sesión fantasma antes de intentar el login
+      await supabase.auth.signOut();
+      
+      // 2. Intento de autenticación
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password: password,
@@ -31,35 +34,45 @@ const Login = () => {
 
       if (authError) throw authError;
 
-      // 2. Validación de perfil en la tabla 'profiles'
+      console.log("🔐 Auth Exitoso para ID:", authData.user.id);
+
+      // 3. Validación de perfil con LOGS DE CONSOLA
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, name')
         .eq('id', authData.user.id)
-        .maybeSingle(); // Uso de maybeSingle para evitar el Crash 500
+        .maybeSingle();
 
-      if (profileError) throw profileError;
-
-      // Si el Auth fue exitoso pero no hay fila en 'profiles'
-      if (!profile) {
-        await supabase.auth.signOut();
-        throw new Error("Su cuenta no tiene un perfil asignado. Contacte al administrador.");
+      if (profileError) {
+        console.error("❌ Error de Supabase al leer perfil:", profileError);
+        throw profileError;
       }
 
-      const userRole = profile.role?.toLowerCase().trim();
+      console.log("📊 Perfil recuperado de la DB:", profile);
 
-      // 3. Navegación forzada por rol
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error("No se encontró un perfil para este usuario en la tabla 'profiles'.");
+      }
+
+      // Normalización del rol para evitar fallos por mayúsculas o espacios
+      const userRole = profile.role?.toLowerCase().trim();
+      console.log("🎯 Rol detectado y normalizado:", userRole);
+
+      // 4. Navegación basada en lógica estricta
       if (userRole === 'admin') {
+        console.log("🚀 Redirigiendo a ADMIN");
         navigate('/admin', { replace: true });
       } else {
+        console.log("🚀 Redirigiendo a USER");
         navigate('/user', { replace: true });
       }
 
     } catch (err) {
+      console.error("💥 Error en el proceso de Login:", err.message);
       const authMessages = {
         "Invalid login credentials": "ID o Llave Maestra incorrectos.",
         "Email not confirmed": "Correo electrónico no verificado.",
-        "PGRST116": "Error de sincronización de perfil (Base de datos)."
       };
       setError(authMessages[err.message] || err.message);
     } finally {
@@ -81,13 +94,13 @@ const Login = () => {
           </h1>
           <div className="flex items-center justify-center gap-2 mt-3 opacity-50">
             <Terminal size={12} className="text-blue-400" />
-            <p className="text-white text-[9px] font-black uppercase tracking-[0.4em]">Terminal de Acceso v2.5.2</p>
+            <p className="text-white text-[9px] font-black uppercase tracking-[0.4em]">Auth Terminal v2.6.0</p>
           </div>
         </div>
 
         <form onSubmit={handleLogin} className="p-10 space-y-7">
           {error && (
-            <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase animate-in slide-in-from-top-2 duration-300">
+            <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase animate-shake">
               <AlertCircle size={20} className="shrink-0" />
               <span className="leading-tight">{error}</span>
             </div>
@@ -138,7 +151,7 @@ const Login = () => {
               <Loader2 className="animate-spin" size={22} />
             ) : (
               <>
-                <span>Desbloquear Terminal</span>
+                <span>Acceder al Sistema</span>
                 <ShieldCheck size={18} className="group-hover:translate-x-1 transition-transform" />
               </>
             )}

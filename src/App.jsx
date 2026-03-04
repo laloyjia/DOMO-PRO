@@ -7,28 +7,27 @@ import Login from "./pages/Login";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserDashboard from "./pages/user/UserDashboard";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminDeps from "./pages/admin/AdminDeps";
-import AdminHistory from "./pages/admin/AdminHistory";
 
 function App() {
   const [session, setSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Función optimizada para obtener el perfil sin romper el sistema
   const fetchProfile = async (userId) => {
+    console.log("🔍 Buscando perfil para ID:", userId);
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('role, name')
         .eq('id', userId)
-        .maybeSingle(); // Clave: No arroja error si no encuentra la fila
-
+        .maybeSingle();
+      
       if (error) throw error;
+      
+      console.log("✅ Perfil encontrado en DB:", data);
       setUserProfile(data);
     } catch (err) {
-      console.error("Error recuperando perfil:", err);
+      console.error("❌ Error recuperando perfil:", err);
       setUserProfile(null);
     } finally {
       setLoading(false);
@@ -36,7 +35,7 @@ function App() {
   };
 
   useEffect(() => {
-    const initialize = async () => {
+    const init = async () => {
       const { data: { session: curSession } } = await supabase.auth.getSession();
       setSession(curSession);
       if (curSession) {
@@ -45,10 +44,10 @@ function App() {
         setLoading(false);
       }
     };
+    init();
 
-    initialize();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, curSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, curSession) => {
+      console.log("🔔 Cambio de Auth:", event);
       setSession(curSession);
       if (curSession) {
         await fetchProfile(curSession.user.id);
@@ -61,12 +60,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return (
-    <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center font-sans">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-      <p className="text-blue-500 font-black text-[10px] tracking-[0.5em] uppercase animate-pulse">Sincronizando Domo-Pro OS</p>
-    </div>
-  );
+  if (loading) return <div className="h-screen w-full bg-slate-950 flex items-center justify-center text-blue-500 font-black italic">DOMO-PRO LOADING...</div>;
 
   return (
     <Router>
@@ -78,29 +72,16 @@ function App() {
             <DashboardLayout userRole={userProfile?.role} userName={userProfile?.name} onLogout={() => supabase.auth.signOut()} />
           </ProtectedRoute>
         }>
-          {/* Redirección inteligente basada en la existencia real del rol */}
+          {/* Aquí forzamos la dirección. Si no es 'admin', va a 'user' */}
           <Route index element={
-            userProfile?.role === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/user" replace />
+            userProfile?.role === 'admin' 
+              ? <Navigate to="/admin" replace /> 
+              : <Navigate to="/user" replace />
           } />
 
           <Route path="admin" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="admin/users" element={
-            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
-              <AdminUsers />
-            </ProtectedRoute>
-          } />
-          <Route path="admin/deps" element={
-            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
-              <AdminDeps />
-            </ProtectedRoute>
-          } />
-          <Route path="admin/history" element={
-            <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
-              <AdminHistory />
             </ProtectedRoute>
           } />
 
@@ -110,8 +91,6 @@ function App() {
             </ProtectedRoute>
           } />
         </Route>
-
-        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );
