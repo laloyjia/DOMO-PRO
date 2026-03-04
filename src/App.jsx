@@ -16,25 +16,32 @@ function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Función optimizada para obtener el perfil sin romper el sistema
+  const fetchProfile = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role, name')
+        .eq('id', userId)
+        .maybeSingle(); // Clave: No arroja error si no encuentra la fila
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (err) {
+      console.error("Error recuperando perfil:", err);
+      setUserProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const initialize = async () => {
-      try {
-        // 1. Obtener sesión activa
-        const { data: { session: curSession } } = await supabase.auth.getSession();
-        setSession(curSession);
-
-        if (curSession) {
-          // 2. Obtener perfil e ID del rol inmediatamente
-          const { data } = await supabase
-            .from('profiles')
-            .select('role, name')
-            .eq('id', curSession.user.id)
-            .single();
-          setUserProfile(data);
-        }
-      } catch (error) {
-        console.error("Error inicializando app:", error);
-      } finally {
+      const { data: { session: curSession } } = await supabase.auth.getSession();
+      setSession(curSession);
+      if (curSession) {
+        await fetchProfile(curSession.user.id);
+      } else {
         setLoading(false);
       }
     };
@@ -44,21 +51,20 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, curSession) => {
       setSession(curSession);
       if (curSession) {
-        const { data } = await supabase.from('profiles').select('role, name').eq('id', curSession.user.id).single();
-        setUserProfile(data);
+        await fetchProfile(curSession.user.id);
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // PANTALLA DE CARGA (Evita el rebote de rutas)
   if (loading) return (
     <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center font-sans">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-      <p className="text-blue-500 font-black text-[10px] tracking-[0.5em] uppercase">Sincronizando Sistema</p>
+      <p className="text-blue-500 font-black text-[10px] tracking-[0.5em] uppercase animate-pulse">Sincronizando Domo-Pro OS</p>
     </div>
   );
 
@@ -72,12 +78,11 @@ function App() {
             <DashboardLayout userRole={userProfile?.role} userName={userProfile?.name} onLogout={() => supabase.auth.signOut()} />
           </ProtectedRoute>
         }>
-          {/* REDIRECCIÓN INICIAL POR ROL */}
+          {/* Redirección inteligente basada en la existencia real del rol */}
           <Route index element={
             userProfile?.role === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/user" replace />
           } />
 
-          {/* RUTAS DE ADMIN */}
           <Route path="admin" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['admin']}>
               <AdminDashboard />
@@ -99,7 +104,6 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* RUTAS DE USUARIO */}
           <Route path="user" element={
             <ProtectedRoute session={session} userRole={userProfile?.role} allowedRoles={['user', 'admin']}>
               <UserDashboard />
