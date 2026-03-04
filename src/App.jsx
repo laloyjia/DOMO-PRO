@@ -5,10 +5,7 @@ import { supabase } from "./lib/supabase";
 import DashboardLayout from "./layouts/DashboardLayout";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
-import AdminDashboard from "./pages/admin/AdminDashboard"; 
-import AdminUsers from "./pages/admin/AdminUsers"; 
-import AdminDeps from "./pages/admin/AdminDeps";      
-import AdminHistory from "./pages/admin/AdminHistory"; 
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserDashboard from "./pages/user/UserDashboard";
 
 function App() {
@@ -17,68 +14,46 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Temporizador de seguridad (5 segundos máximo de carga)
-    const failsafe = setTimeout(() => {
-      if (loading) setLoading(false);
-    }, 5000);
+    // Failsafe: Si en 6 segundos no carga, forzamos salida del loading
+    const timer = setTimeout(() => setLoading(false), 6000);
 
-    const initializeAuth = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-
-        if (currentSession) {
-          const { data } = await supabase
-            .from('profiles')
-            .select('name, role')
-            .eq('id', currentSession.user.id)
-            .single();
-          
-          setUserProfile(data || { name: currentSession.user.email, role: 'user' });
-        }
-      } catch (err) {
-        console.error("Auth init error:", err);
-      } finally {
-        setLoading(false);
-        clearTimeout(failsafe);
+    const getInitialSession = async () => {
+      const { data: { session: curSession } } = await supabase.auth.getSession();
+      setSession(curSession);
+      
+      if (curSession) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role, name')
+          .eq('id', curSession.user.id)
+          .single();
+        setUserProfile(data);
       }
+      setLoading(false);
+      clearTimeout(timer);
     };
 
-    initializeAuth();
+    getInitialSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      if (!currentSession) {
-        setUserProfile(null);
-        setLoading(false);
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) setUserProfile(null);
     });
 
     return () => {
-      subscription?.unsubscribe();
-      clearTimeout(failsafe);
+      subscription.unsubscribe();
+      clearTimeout(timer);
     };
   }, []);
 
-  const handleLogout = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
-    localStorage.removeItem('domo_role');
-    setSession(null);
-    setUserProfile(null);
-    setLoading(false);
-  };
-
-  if (loading) {
-    return (
-      <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-blue-500 mb-4"></div>
-        <p className="text-blue-500 font-black text-[10px] tracking-[0.4em] animate-pulse uppercase italic">
-          Sincronizando Terminal Domo-Pro...
-        </p>
+  if (loading) return (
+    <div className="h-screen w-full bg-slate-950 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-blue-500 font-black text-[10px] uppercase tracking-[0.5em]">System Loading</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <Router>
@@ -86,15 +61,12 @@ function App() {
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" replace />} />
         
         <Route path="/" element={
-          <ProtectedRoute session={session} userRole={userProfile?.role}>
-            <DashboardLayout userName={userProfile?.name} userRole={userProfile?.role} onLogout={handleLogout} />
+          <ProtectedRoute session={session}>
+            <DashboardLayout userRole={userProfile?.role} />
           </ProtectedRoute>
         }>
-          <Route index element={userProfile?.role === 'admin' ? <Navigate to="/admin" /> : <Navigate to="/user" />} />
+          <Route index element={<Navigate to={userProfile?.role === 'admin' ? "/admin" : "/user"} replace />} />
           <Route path="admin" element={<AdminDashboard />} />
-          <Route path="admin/users" element={<AdminUsers />} />
-          <Route path="admin/deps" element={<AdminDeps />} />
-          <Route path="admin/history" element={<AdminHistory />} />
           <Route path="user" element={<UserDashboard />} />
         </Route>
 
