@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // Necesario para navegar
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Lock, Mail, Loader2, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
@@ -17,7 +17,7 @@ const Login = () => {
     setError(null);
 
     try {
-      // 1. AUTENTICACIÓN REAL con Supabase Auth
+      // 1. AUTENTICACIÓN
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password: password,
@@ -25,7 +25,7 @@ const Login = () => {
 
       if (authError) throw authError;
 
-      // 2. OBTENER ROL del perfil
+      // 2. OBTENER ROL (Usamos 'id' para evitar el error 400)
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
@@ -33,25 +33,22 @@ const Login = () => {
         .single();
 
       if (profileError || !profile) {
-        throw new Error("No se pudo verificar el rol del usuario.");
+        throw new Error("Perfil no encontrado. Contacte al administrador.");
       }
 
       // 3. PERSISTENCIA Y REDIRECCIÓN
-      // Guardamos el rol en localStorage por si lo necesitas rápido en otros componentes
       localStorage.setItem('domo_role', profile.role);
 
       if (profile.role === 'admin') {
-        navigate('/admin-dashboard');
+        navigate('/admin');
       } else {
-        navigate('/user-dashboard');
+        navigate('/user');
       }
 
     } catch (err) {
-      // Traducción amigable de errores comunes de Supabase
       const message = err.message === "Invalid login credentials" 
         ? "Credenciales incorrectas. Verifique su correo y contraseña."
         : err.message;
-      
       setError(message);
     } finally {
       setLoading(false);
@@ -62,10 +59,9 @@ const Login = () => {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans border-t-4 border-blue-600">
       <div className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl shadow-slate-200 overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-500">
         
-        {/* Header - Mantengo tu estilo industrial que está genial */}
         <div className="bg-slate-900 p-12 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
-          <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/40 rotate-6 hover:rotate-0 transition-transform duration-500">
+          <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/40 rotate-6">
             <ShieldCheck size={40} className="text-white" />
           </div>
           <h1 className="text-white text-3xl font-black tracking-tighter uppercase italic">
@@ -74,10 +70,9 @@ const Login = () => {
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3">Secure Terminal v2.5</p>
         </div>
 
-        {/* Formulario */}
         <form onSubmit={handleLogin} className="p-12 space-y-7">
           {error && (
-            <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase animate-shake">
+            <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase">
               <AlertCircle size={20} /> {error}
             </div>
           )}
@@ -121,7 +116,7 @@ const Login = () => {
 
           <button 
             disabled={loading}
-            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-blue-600 active:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-3 disabled:opacity-70"
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-blue-600 active:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-3 disabled:opacity-70 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" size={22} /> : "Desbloquear Sistema"}
           </button>
