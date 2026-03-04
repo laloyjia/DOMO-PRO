@@ -17,7 +17,6 @@ const Login = () => {
     setError(null);
 
     try {
-      // 1. Autenticación
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password: password,
@@ -25,79 +24,59 @@ const Login = () => {
 
       if (authError) throw authError;
 
-      // 2. Obtener Perfil con reintento/limpieza de error
+      // Obtener el perfil para saber a dónde mandarlo inmediatamente
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', authData.user.id)
         .single();
 
-      // Si hay error de perfil, pero el auth fue exitoso, intentamos entrar como user por defecto
-      const finalRole = profile?.role || 'user';
-      localStorage.setItem('domo_role', finalRole);
+      if (profileError || !profile) throw new Error("Perfil no encontrado.");
 
-      // 3. Navegación basada en rutas reales de App.jsx
-      if (finalRole === 'admin') {
-        navigate('/admin');
+      // Navegación atómica
+      if (profile.role === 'admin') {
+        navigate('/admin', { replace: true });
       } else {
-        navigate('/user');
+        navigate('/user', { replace: true });
       }
 
     } catch (err) {
-      console.error("Login error:", err);
-      setError(err.message === "Invalid login credentials" 
-        ? "Acceso denegado: Credenciales incorrectas." 
-        : "Error de conexión con el terminal.");
+      setError(err.message === "Invalid login credentials" ? "Credenciales incorrectas." : err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
-      <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-500">
-        <div className="bg-slate-900 p-10 text-center relative">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-500">
+        <div className="bg-slate-900 p-12 text-center relative">
           <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30 rotate-3">
-            <ShieldCheck size={32} className="text-white" />
+          <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 rotate-6 shadow-xl shadow-blue-500/40">
+            <ShieldCheck size={40} className="text-white" />
           </div>
-          <h1 className="text-white text-2xl font-black tracking-tighter uppercase italic">
-            Domo-Pro <span className="text-blue-500">OS</span>
-          </h1>
+          <h1 className="text-white text-3xl font-black italic uppercase tracking-tighter">Domo-Pro <span className="text-blue-500">OS</span></h1>
         </div>
 
-        <form onSubmit={handleLogin} className="p-10 space-y-6">
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 rounded-r-xl flex items-center gap-3 text-xs font-bold uppercase">
-              <AlertCircle size={18} /> {error}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Terminal ID</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-3.5 text-slate-300" size={18} />
-              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-xl py-3.5 pl-12 pr-4 outline-none transition-all font-bold text-slate-700"
-                placeholder="admin@domo.pro" />
+        <form onSubmit={handleLogin} className="p-12 space-y-7">
+          {error && <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase"><AlertCircle size={20}/> {error}</div>}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">ID Usuario</label>
+            <div className="relative group">
+              <Mail className="absolute left-5 top-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-2xl py-4 pl-14 pr-4 outline-none font-bold text-slate-700" placeholder="admin@domo.pro" />
             </div>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Key</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-3.5 text-slate-300" size={18} />
-              <input required type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-xl py-3.5 pl-12 pr-12 outline-none transition-all font-bold text-slate-700"
-                placeholder="••••••••" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-300 hover:text-blue-500">
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Llave Maestra</label>
+            <div className="relative group">
+              <Lock className="absolute left-5 top-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <input required type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-2xl py-4 pl-14 pr-14 outline-none font-bold text-slate-700" placeholder="••••••••" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-4 text-slate-300 hover:text-slate-600 transition-colors">{showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}</button>
             </div>
           </div>
-
-          <button disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 active:scale-[0.98] transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "Iniciar Secuencia"}
+          <button disabled={loading} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-blue-600 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-70">
+            {loading ? <Loader2 className="animate-spin" size={22} /> : "Desbloquear Sistema"}
           </button>
         </form>
       </div>
