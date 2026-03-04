@@ -1,96 +1,132 @@
-import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { supabase } from "./lib/supabase";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { Lock, Mail, Loader2, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
-import DashboardLayout from "./layouts/DashboardLayout";
-import Login from "./pages/Login";
-import ProtectedRoute from "./components/auth/ProtectedRoute";
-import AdminDashboard from "./pages/admin/AdminDashboard"; 
-import AdminUsers from "./pages/admin/AdminUsers"; 
-import AdminDeps from "./pages/admin/AdminDeps";      
-import AdminHistory from "./pages/admin/AdminHistory"; 
-import UserDashboard from "./pages/user/UserDashboard";
+const Login = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
-function App() {
-  const [session, setSession] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // TEMPORIZADOR DE SEGURIDAD: Si en 5 segundos no hay respuesta, forzar stop loading
-    const timer = setTimeout(() => {
-      if (loading) setLoading(false);
-    }, 5000);
-
-    const initialize = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        setSession(initialSession);
-        if (initialSession) {
-          const { data } = await supabase.from('profiles').select('name, role').eq('id', initialSession.user.id).single();
-          setUserProfile(data || { name: initialSession.user.email, role: 'user' });
-        }
-      } catch (e) {
-        console.error("Error en arranque:", e);
-      } finally {
-        setLoading(false);
-        clearTimeout(timer);
-      }
-    };
-
-    initialize();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      if (!currentSession) {
-        setUserProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-      clearTimeout(timer);
-    };
-  }, []);
-
-  const handleLogout = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setLoading(true);
-    await supabase.auth.signOut();
-    setSession(null);
-    setUserProfile(null);
-    setLoading(false);
+    setError(null);
+
+    try {
+      // 1. AUTENTICACIÓN
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: password,
+      });
+
+      if (authError) throw authError;
+
+      // 2. OBTENER ROL
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        throw new Error("No se pudo verificar el rol del usuario.");
+      }
+
+      // 3. REDIRECCIÓN (CORREGIDA)
+      // Ahora coinciden con las rutas definidas en App.jsx
+      if (profile.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/user');
+      }
+
+    } catch (err) {
+      const message = err.message === "Invalid login credentials" 
+        ? "Credenciales incorrectas. Verifique su correo y contraseña."
+        : err.message;
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) return (
-    <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center">
-      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-blue-500 mb-4"></div>
-      <p className="text-blue-500 font-black text-[10px] tracking-[0.4em] animate-pulse italic uppercase">
-        Sincronizando Terminal Domo-Pro...
-      </p>
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans border-t-4 border-blue-600">
+      <div className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl shadow-slate-200 overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-500">
+        
+        <div className="bg-slate-900 p-12 text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+          <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/40 rotate-6">
+            <ShieldCheck size={40} className="text-white" />
+          </div>
+          <h1 className="text-white text-3xl font-black tracking-tighter uppercase italic">
+            Domo-Pro <span className="text-blue-500">OS</span>
+          </h1>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3">Secure Terminal v2.5</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="p-12 space-y-7">
+          {error && (
+            <div className="bg-red-50 border-2 border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-[11px] font-black uppercase">
+              <AlertCircle size={20} /> {error}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">ID de Usuario</label>
+            <div className="relative group">
+              <Mail className="absolute left-5 top-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <input 
+                required
+                type="email"
+                value={email}
+                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 focus:bg-white rounded-2xl py-4 pl-14 pr-4 outline-none transition-all font-bold text-slate-700"
+                placeholder="nombre@domo.pro"
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Llave Maestra</label>
+            <div className="relative group">
+              <Lock className="absolute left-5 top-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <input 
+                required
+                type={showPassword ? "text" : "password"}
+                value={password}
+                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-blue-500 focus:bg-white rounded-2xl py-4 pl-14 pr-14 outline-none transition-all font-bold text-slate-700"
+                placeholder="••••••••"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-5 top-4 text-slate-300 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
+
+          <button 
+            disabled={loading}
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-blue-600 active:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-3 disabled:opacity-70 cursor-pointer"
+          >
+            {loading ? <Loader2 className="animate-spin" size={22} /> : "Desbloquear Sistema"}
+          </button>
+        </form>
+
+        <div className="p-8 bg-slate-50/50 text-center">
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em]">Domo-Pro Systems &copy; 2026</p>
+        </div>
+      </div>
     </div>
   );
+};
 
-  return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={!session ? <Login /> : <Navigate to="/" replace />} />
-        <Route path="/" element={
-          <ProtectedRoute session={session} userRole={userProfile?.role}>
-            <DashboardLayout userName={userProfile?.name} userRole={userProfile?.role} onLogout={handleLogout} />
-          </ProtectedRoute>
-        }>
-          <Route index element={userProfile?.role === 'admin' ? <Navigate to="/admin" /> : <Navigate to="/user" />} />
-          <Route path="admin" element={<AdminDashboard />} />
-          <Route path="admin/users" element={<AdminUsers />} />
-          <Route path="admin/deps" element={<AdminDeps />} />
-          <Route path="admin/history" element={<AdminHistory />} />
-          <Route path="user" element={<UserDashboard />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </Router>
-  );
-}
-
-export default App;
+export default Login;

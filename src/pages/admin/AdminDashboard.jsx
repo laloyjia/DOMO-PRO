@@ -1,35 +1,20 @@
 import React from "react";
-import AdminUsers from "./AdminUsers.jsx";
 import AdminStats from "./AdminStats.jsx";
 
-const AdminDashboard = ({ activeTab, setActiveTab }) => {
-  
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'stats':
-        return <AdminStats />;
-      
-      case 'users':
-        return <AdminUsers />;
-      
-      case 'config':
-        return (
-          <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm text-center">
-            <h2 className="text-xl font-black text-slate-900 uppercase italic">Configuración del Sistema</h2>
-            <p className="text-xs text-slate-400 mt-2 uppercase font-bold tracking-widest italic">Módulo en mantenimiento preventivo</p>
-          </div>
-        );
-      
-      default:
-        // Por defecto, si algo falla, mostramos el Panel de Control (Stats)
-        return <AdminStats />;
-    }
-  };
-
+const AdminDashboard = () => {
   return (
     <div className="w-full min-h-[calc(100vh-150px)]">
-      <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-        {renderContent()}
+      <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-500">
+        <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">
+          Panel de <span className="text-blue-500">Control</span>
+        </h1>
+        <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mt-2">
+          Estado del Sistema Domo-Pro
+        </p>
+      </div>
+      
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+        <AdminStats />
       </div>
     </div>
   );
