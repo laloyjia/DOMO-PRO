@@ -3,15 +3,16 @@ import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { 
   UserPlus, FileUp, X, Check, Loader2, 
-  Trash2, Shield, User, Mail, Key, Download, Edit3, Building2
+  Trash2, Shield, User, Mail, Key, Download, Edit3, Building2, AlertCircle
 } from 'lucide-react';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [mode, setMode] = useState('manual'); 
+  const [mode, setMode] = useState('manual'); // 'manual', 'edit', 'excel'
   const [editingId, setEditingId] = useState(null);
+  const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
 
   const [formData, setFormData] = useState({
     name: '', username: '', email: '', role: 'user', dep: 'Soporte', temp_password: ''
@@ -22,8 +23,15 @@ const AdminUsers = () => {
   }, []);
 
   const fetchUsers = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) console.error("Error fetching users:", error);
     setUsers(data || []);
+    setLoading(false);
   };
 
   const handleNameChange = (val) => {
@@ -32,55 +40,71 @@ const AdminUsers = () => {
       return;
     }
     const cleanName = val.toLowerCase().trim().replace(/\s+/g, '.').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const generatedPass = Math.random().toString(36).slice(-8).toUpperCase();
-    
-    setFormData({
-      ...formData,
-      name: val,
-      username: cleanName,
-      email: val ? `${cleanName}@domopro.cl` : '',
-      temp_password: generatedPass
-    });
+    setFormData({ ...formData, name: val, username: cleanName });
   };
 
-  const handleSave = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setStatusMsg({ type: '', text: '' });
 
     try {
       if (mode === 'edit') {
-        const { error } = await supabase.from('profiles').update({
-          name: formData.name,
-          role: formData.role,
-          dep: formData.dep,
-          username: formData.username
-        }).eq('id', editingId);
+        // ACTUALIZACIÓN DE PERFIL
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            name: formData.name,
+            role: formData.role,
+            dep: formData.dep,
+            username: formData.username
+          })
+          .eq('id', editingId);
+
         if (error) throw error;
+        setStatusMsg({ type: 'success', text: 'Usuario actualizado correctamente' });
       } else {
-        // CREACIÓN EN AUTH + TRIGGER AUTOMÁTICO EN PROFILES
-        const { error } = await supabase.auth.signUp({
+        // CREACIÓN DE NUEVO USUARIO EN AUTH
+        // El Trigger de la DB se encargará de crear el registro en 'profiles'
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.temp_password,
           options: {
             data: {
               name: formData.name,
-              role: formData.role,
-              dep: formData.dep,
               username: formData.username,
-              temp_password: formData.temp_password
+              role: formData.role,
+              dep: formData.dep
             }
           }
         });
-        if (error) throw error;
-        alert("Operador registrado en el sistema Domo-Pro");
+
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("Error al crear el registro de autenticación");
+
+        setStatusMsg({ type: 'success', text: 'Usuario creado y registrado' });
       }
-      
+
       setShowModal(false);
       fetchUsers();
+      resetForm();
     } catch (err) {
-      alert("Error de sistema: " + err.message);
+      console.error("Error en operación:", err.message);
+      setStatusMsg({ type: 'error', text: err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const deleteUser = async (id) => {
+    if (!window.confirm("¿Estás seguro de eliminar este usuario? Esta acción es irreversible.")) return;
+    
+    try {
+      const { error } = await supabase.from('profiles').delete().eq('id', id);
+      if (error) throw error;
+      fetchUsers();
+    } catch (err) {
+      alert("Error al eliminar: " + err.message);
     }
   };
 
@@ -92,117 +116,58 @@ const AdminUsers = () => {
       username: user.username || '',
       email: user.email || '',
       role: user.role || 'user',
-      dep: user.dep || 'Soporte',
-      temp_password: user.temp_password || ''
+      dep: user.dep || 'General',
+      temp_password: ''
     });
     setShowModal(true);
   };
 
-  const deleteUser = async (id) => {
-    if (window.confirm("¿Confirmar baja definitiva de este operador?")) {
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) alert(error.message);
-      else fetchUsers();
-    }
+  const resetForm = () => {
+    setFormData({ name: '', username: '', email: '', role: 'user', dep: 'Soporte', temp_password: '' });
+    setEditingId(null);
+    setMode('manual');
   };
 
   return (
-    <div className="p-4 space-y-6 max-w-6xl mx-auto">
-      {/* HEADER */}
-      <div className="flex justify-between items-end border-b border-white/10 pb-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* HEADER Y BOTONES */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter italic uppercase">Gestión de Personal</h2>
-          <p className="text-[10px] text-blue-500 font-bold uppercase tracking-[0.3em] mt-1">Terminal de Control de Usuarios</p>
+          <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter">Gestión de <span className="text-blue-500">Personal</span></h2>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Operadores del Sistema</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => { setMode('manual'); setShowModal(true); setFormData({name:'', username:'', email:'', role:'user', dep:'Soporte', temp_password:''}); }} 
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20">
-            <UserPlus size={16} /> Registro Manual
+          <button onClick={() => { resetForm(); setShowModal(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-blue-600/20">
+            <UserPlus size={18} /> Nuevo Operador
           </button>
         </div>
       </div>
 
-      {/* MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-white/5 flex justify-between items-center">
-              <h3 className="text-white font-black uppercase text-xs tracking-[0.2em]">
-                {mode === 'edit' ? 'Modificar Credenciales' : 'Nuevo Acceso Domo-Pro'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
-            </div>
-
-            <form onSubmit={handleSave} className="p-8 space-y-5">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nombre del Operador</label>
-                <input required value={formData.name} onChange={(e) => handleNameChange(e.target.value)} 
-                  className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-sm font-bold focus:border-blue-500 outline-none" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Departamento</label>
-                  <select value={formData.dep} onChange={e => setFormData({...formData, dep: e.target.value})} 
-                    className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-xs font-bold focus:border-blue-500 outline-none">
-                    <option value="Soporte">Soporte</option>
-                    <option value="Operaciones">Operaciones</option>
-                    <option value="Administración">Administración</option>
-                    <option value="Seguridad">Seguridad</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nivel de Acceso</label>
-                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} 
-                    className="w-full bg-slate-800 border border-white/5 rounded-xl p-4 text-white text-xs font-bold focus:border-blue-500 outline-none text-blue-400">
-                    <option value="admin">Administrador</option>
-                    <option value="user">Operador</option>
-                    <option value="viewer">Visualizador</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-3">
-                 <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500 font-bold uppercase">ID: {formData.username || '---'}</span>
-                    <span className="text-blue-400 font-mono font-bold">PASS: {formData.temp_password || '---'}</span>
-                 </div>
-                 <p className="text-[9px] text-slate-400 italic">El email de acceso será: {formData.email || '---'}</p>
-              </div>
-
-              <button disabled={loading} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-500 transition-all flex items-center justify-center gap-2">
-                {loading ? <Loader2 className="animate-spin" /> : <><Check size={18}/> {mode === 'edit' ? 'Actualizar Perfil' : 'Activar Usuario'}</>}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* TABLA INDUSTRIAL */}
-      <div className="bg-slate-900/50 border border-white/5 rounded-[2rem] overflow-hidden backdrop-blur-md shadow-2xl">
+      {/* TABLA DE USUARIOS */}
+      <div className="bg-[#0f172a] rounded-[2rem] border border-white/5 shadow-2xl overflow-hidden">
         <table className="w-full text-left">
-          <thead>
-            <tr className="bg-white/5 border-b border-white/5">
-              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest">Operador / Depto</th>
-              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest">Email de Acceso</th>
-              <th className="px-8 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Acciones</th>
+          <thead className="bg-white/5 border-b border-white/5">
+            <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+              <th className="px-8 py-5">Operador</th>
+              <th className="px-8 py-5">Contacto</th>
+              <th className="px-8 py-5 text-right">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5 text-sm">
-            {users.map(u => (
-              <tr key={u.id} className="hover:bg-white/[0.02] transition-all group">
+          <tbody className="divide-y divide-white/5">
+            {users.map((u) => (
+              <tr key={u.id} className="group hover:bg-white/[0.02] transition-colors">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center font-black text-xs uppercase shadow-inner">
-                      {u.name ? u.name.substring(0,2) : '??'}
+                    <div className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl flex items-center justify-center border border-white/10 group-hover:border-blue-500/50 transition-colors">
+                      <User size={20} className="text-slate-400 group-hover:text-blue-400" />
                     </div>
                     <div>
                       <p className="font-bold text-slate-200 uppercase tracking-tight">{u.name || 'Sin nombre'}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="px-2 py-0.5 bg-slate-800 text-slate-400 text-[8px] font-black uppercase rounded border border-white/5 tracking-tighter">
+                        <span className="px-2 py-0.5 bg-slate-800 text-slate-400 text-[8px] font-black uppercase rounded border border-white/5">
                           {u.dep || 'General'}
                         </span>
-                        <span className={`text-[8px] font-black uppercase tracking-tighter ${u.role === 'admin' ? 'text-blue-500' : 'text-slate-500'}`}>
+                        <span className={`text-[8px] font-black uppercase ${u.role === 'admin' ? 'text-blue-500' : 'text-slate-500'}`}>
                           {u.role}
                         </span>
                       </div>
@@ -220,7 +185,81 @@ const AdminUsers = () => {
             ))}
           </tbody>
         </table>
+        {users.length === 0 && !loading && (
+          <div className="p-20 text-center text-slate-600 font-bold uppercase text-xs tracking-widest">No hay operadores registrados</div>
+        )}
       </div>
+
+      {/* MODAL DE CREACIÓN/EDICIÓN */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-[#1e293b] w-full max-w-lg rounded-[2.5rem] shadow-2xl border border-white/10 overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
+              <div>
+                <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">
+                  {mode === 'edit' ? 'Editar' : 'Registrar'} <span className="text-blue-500">Operador</span>
+                </h3>
+              </div>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full text-slate-400 transition-colors"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-8 space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nombre Completo</label>
+                  <input required value={formData.name} onChange={e => handleNameChange(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500 transition-all" placeholder="Ej: Juan Perez" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ID Usuario</label>
+                  <input readOnly value={formData.username} className="w-full bg-slate-800/50 border border-white/5 rounded-xl p-4 text-sm font-mono text-slate-400 outline-none" placeholder="id.usuario" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Correo Electrónico</label>
+                <input required disabled={mode === 'edit'} type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500 disabled:opacity-50" placeholder="correo@empresa.com" />
+              </div>
+
+              {mode !== 'edit' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Contraseña Temporal</label>
+                  <input required type="password" value={formData.temp_password} onChange={e => setFormData({...formData, temp_password: e.target.value})} className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" placeholder="Min. 6 caracteres" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nivel de Acceso</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500">
+                    <option value="user">Operador (User)</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Departamento</label>
+                  <select value={formData.dep} onChange={e => setFormData({...formData, dep: e.target.value})} className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500">
+                    <option value="Soporte">Soporte</option>
+                    <option value="Mantenimiento">Mantenimiento</option>
+                    <option value="Seguridad">Seguridad</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+              </div>
+
+              {statusMsg.text && (
+                <div className={`p-4 rounded-xl flex items-center gap-3 ${statusMsg.type === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                  <AlertCircle size={18} />
+                  <p className="text-[10px] font-black uppercase tracking-tight">{statusMsg.text}</p>
+                </div>
+              )}
+
+              <button disabled={loading} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-600/20 disabled:opacity-50">
+                {loading ? <Loader2 className="animate-spin" /> : <><Check size={20}/> {mode === 'edit' ? 'Actualizar Datos' : 'Confirmar Registro'}</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

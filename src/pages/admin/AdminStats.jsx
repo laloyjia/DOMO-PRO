@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   Home, Building2, Cpu, Plus, X, Check, Loader2, 
-  Settings2, Radio, Power, Trash2, Globe, Box, Zap, User, 
-  Activity, PlusCircle, Layout, Lightbulb, Thermometer, ShieldCheck, Tv
+  Settings2, Power, Trash2, Zap, User, 
+  Activity, PlusCircle, Layout, Lightbulb, ShieldCheck
 } from 'lucide-react';
 
 const AdminStats = () => {
@@ -19,173 +19,154 @@ const AdminStats = () => {
   const [formHab, setFormHab] = useState({ name: '', type: 'Salón' });
   const [formDev, setFormDev] = useState({ name: '', type: 'Iluminación', consumption_base: 5 });
 
-  useEffect(() => { fetchFullHierarchy(); fetchUsers(); }, []);
+  useEffect(() => { 
+    fetchFullHierarchy(); 
+    fetchUsers(); 
+  }, []);
 
   const fetchUsers = async () => {
-    const { data: userData } = await supabase.from('profiles').select('id, name, email');
-    if (userData) setUsers(userData);
+    const { data: userData } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .order('name');
+    setUsers(userData || []);
   };
 
   const fetchFullHierarchy = async () => {
     setLoading(true);
-    const { data: properties } = await supabase
-      .from('properties')
-      .select(`*, dependencies (*, devices (*))`)
-      .order('created_at', { ascending: false });
+    try {
+      // 1. Traer Casas
+      const { data: casas } = await supabase.from('properties').select('*').order('created_at');
+      // 2. Traer Habitaciones
+      const { data: habs } = await supabase.from('rooms').select('*').order('created_at');
+      // 3. Traer Dispositivos
+      const { data: devs } = await supabase.from('devices').select('*').order('created_at');
 
-    if (properties) {
-      setData(properties);
-      let hCount = 0, dCount = 0;
-      properties.forEach(p => {
-        hCount += p.dependencies?.length || 0;
-        p.dependencies?.forEach(h => dCount += h.devices?.length || 0);
+      const fullData = (casas || []).map(casa => ({
+        ...casa,
+        rooms: (habs || []).filter(h => h.property_id === casa.id).map(room => ({
+          ...room,
+          devices: (devs || []).filter(d => d.room_id === room.id)
+        }))
+      }));
+
+      setData(fullData);
+      setStats({
+        casas: casas?.length || 0,
+        habs: habs?.length || 0,
+        devs: devs?.length || 0
       });
-      setStats({ casas: properties.length, habs: hCount, devs: dCount });
+    } catch (err) {
+      console.error("Error cargando jerarquía:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleCreate = async (e) => {
+  const handleCreateCasa = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    try {
-      let error;
-      if (showModal === 'casa') {
-        ({ error } = await supabase.from('properties').insert([{ 
-          name: formCasa.name,
-          owner_id: formCasa.owner_id,
-          address: formCasa.address,
-          consumption: parseInt(formCasa.consumption_limit),
-          category: formCasa.category
-        }]));
-      } else if (showModal === 'hab') {
-        ({ error } = await supabase.from('dependencies').insert([{ 
-          name: formHab.name, 
-          property_id: parentId.casa, 
-          type: formHab.type 
-        }]));
-      } else if (showModal === 'dev') {
-        ({ error } = await supabase.from('devices').insert([{ 
-          name: formDev.name, 
-          dependency_id: parentId.hab, 
-          status: false, 
-          type: formDev.type 
-        }]));
-      }
-      if (error) throw error;
+    const { error } = await supabase.from('properties').insert([formCasa]);
+    if (!error) {
       setShowModal(null);
+      fetchFullHierarchy();
       setFormCasa({ name: '', owner_id: '', address: '', consumption_limit: 100, category: 'Residencial' });
-      setFormHab({ name: '', type: 'Salón' });
-      setFormDev({ name: '', type: 'Iluminación', consumption_base: 5 });
-      await fetchFullHierarchy();
-    } catch (err) { alert("Protocol Error: " + err.message); } finally { setSubmitting(false); }
+    }
+    setSubmitting(false);
   };
 
-  const toggleDevice = async (id, status) => {
-    await supabase.from('devices').update({ status: !status }).eq('id', id);
-    fetchFullHierarchy();
-  };
-
-  const deleteRecord = async (table, id) => {
-    if(window.confirm("¿CONFIRMAR DESCONEXIÓN DE NODO? Esta acción es irreversible.")) {
-      await supabase.from(table).delete().eq('id', id);
+  const handleCreateHab = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    const { error } = await supabase.from('rooms').insert([{ ...formHab, property_id: parentId.casa }]);
+    if (!error) {
+      setShowModal(null);
       fetchFullHierarchy();
     }
+    setSubmitting(false);
   };
 
-  return (
-    // FONDO PROFUNDO FPP (Futuristic Panel Platform) - Compactado
-    <div className="space-y-6 p-4 md:p-6 font-sans bg-[#050509] text-slate-300 min-h-screen animate-in fade-in duration-1000">
-      
-      {/* HEADER TÁCTICO - Compactado */}
-      <div className="flex justify-between items-center p-5 bg-[#0a0a12] rounded-3xl border border-white/5 shadow-[0_0_30px_-5px_rgba(59,130,246,0.1)] relative overflow-hidden group">
-         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"/>
-         <div className="relative z-10 flex items-center gap-4">
-            <div className="p-2.5 bg-blue-950 rounded-xl border border-blue-500/20 text-blue-400">
-                <Settings2 size={20} className="animate-spin-slow"/>
-            </div>
-            <div>
-                <h1 className="text-2xl font-black italic tracking-tighter uppercase text-white">CORE NETWORK</h1>
-                <p className="text-[9px] font-mono font-bold text-blue-400 uppercase tracking-[0.3em] flex items-center gap-1.5">
-                    <span className="h-1 w-1 rounded-full bg-green-500 animate-pulse"/> SYSTEM_ACTIVE [v4.1]
-                </p>
-            </div>
-         </div>
-         <button onClick={() => setShowModal('casa')} className="relative z-10 bg-white text-slate-950 px-6 py-3 rounded-xl font-black uppercase text-xs hover:bg-blue-400 transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-white/5">
-            <Plus size={16}/> INITIALIZE_NODE
-         </button>
-      </div>
+  const handleCreateDev = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    const { error } = await supabase.from('devices').insert([{ 
+      ...formDev, 
+      room_id: parentId.hab, 
+      status: false,
+      last_activity: new Date().toISOString()
+    }]);
+    if (!error) {
+      setShowModal(null);
+      fetchFullHierarchy();
+    }
+    setSubmitting(false);
+  };
 
-      {/* METRICS (Datacenter Style) - Más compactas, texto más pequeño */}
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-20 space-y-4">
+      <Loader2 className="animate-spin text-blue-500" size={40} />
+      <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Sincronizando Infraestructura...</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-8 pb-20">
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Infraestructuras', val: stats.casas, icon: Home, color: 'text-blue-400' },
-          { label: 'Nodos Área', val: stats.habs, icon: Radio, color: 'text-purple-400' },
-          { label: 'Terminales', val: stats.devs, icon: Cpu, color: 'text-cyan-400' }
-        ].map((item, i) => (
-          <div key={i} className="bg-[#0a0a12] border border-white/5 p-6 rounded-3xl shadow-lg group overflow-hidden relative">
-            <div className="flex justify-between items-start relative z-10">
-                <div>
-                  <p className="text-white/40 text-[8px] font-black uppercase tracking-[0.3em] mb-1">{item.label}</p>
-                  <h3 className="text-5xl font-black text-white italic tracking-tighter leading-none">{item.val}</h3>
-                </div>
-                <item.icon className={`${item.color} opacity-20 group-hover:opacity-100 transition-opacity duration-500`} size={36} />
-            </div>
+          { label: 'Propiedades', val: stats.casas, icon: <Home className="text-blue-500" />, bg: 'bg-blue-500/10' },
+          { label: 'Dependencias', val: stats.habs, icon: <Layout className="text-emerald-500" />, bg: 'bg-emerald-500/10' },
+          { label: 'Nodos Activos', val: stats.devs, icon: <Cpu className="text-purple-500" />, bg: 'bg-purple-500/10' }
+        ].map((kpi, i) => (
+          <div key={i} className="bg-slate-900 border border-white/5 p-6 rounded-[2rem] shadow-xl">
+            <div className={`${kpi.bg} w-12 h-12 rounded-2xl flex items-center justify-center mb-4`}>{kpi.icon}</div>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{kpi.label}</p>
+            <p className="text-3xl font-black text-white italic">{kpi.val}</p>
           </div>
         ))}
       </div>
 
-      {/* EXPLORADOR DE RED (Glassmorphism Deep) - Menos padding, bordes más finos */}
-      <div className="space-y-6 pb-10">
-        {loading ? (
-            <div className="py-20 text-center text-slate-600 font-black uppercase tracking-[0.5em] text-[9px]">Sincronizando_Protocolos...</div>
-        ) : data.map(casa => (
-          <div key={casa.id} className="bg-[#0a0a12] rounded-3xl border border-white/5 overflow-hidden shadow-[0_16px_32px_-10px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom duration-500 hover:border-blue-500/10 transition-colors">
-            {/* CABECERA VIVIENDA (Glow Active) - Compactada */}
-            <div className="p-5 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-transparent via-white/5 to-transparent relative">
-              <div className="absolute top-0 left-8 h-[1px] w-28 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"/>
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center text-blue-400 border border-blue-500/20"><Home size={22}/></div>
+      {/* ARBOL DE ESTRUCTURA */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-black text-white uppercase italic tracking-tighter">Estructura del <span className="text-blue-500">Sistema</span></h3>
+          <button onClick={() => setShowModal('casa')} className="bg-white text-black px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all">
+            + Nueva Propiedad
+          </button>
+        </div>
+
+        {data.map(casa => (
+          <div key={casa.id} className="bg-slate-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden">
+            <div className="p-6 flex items-center justify-between border-b border-white/5 bg-white/[0.02]">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-500/20 rounded-2xl text-blue-400"><Home size={24}/></div>
                 <div>
-                  <h3 className="font-black uppercase italic text-xl text-white tracking-tighter leading-none">{casa.name}</h3>
-                  <p className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 mt-1.5">
-                    <Globe size={11}/> {casa.address || 'LOC_HOST'} • <span className="text-blue-500">{casa.category}</span>
-                  </p>
+                  <h4 className="font-black text-white uppercase text-sm tracking-tight">{casa.name}</h4>
+                  <p className="text-slate-500 text-[10px] font-bold uppercase">{casa.address}</p>
                 </div>
               </div>
-              <div className="flex gap-2 relative z-10">
-                <button onClick={() => { setParentId({casa: casa.id}); setShowModal('hab'); }} className="bg-blue-950 text-blue-300 border border-blue-500/20 px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all shadow-md active:scale-95">+ Área</button>
-                <button onClick={() => deleteRecord('properties', casa.id)} className="p-2.5 text-slate-600 hover:text-red-500 rounded-lg transition-all"><Trash2 size={16}/></button>
-              </div>
+              <button onClick={() => { setParentId({ ...parentId, casa: casa.id }); setShowModal('hab'); }} className="p-2 text-slate-400 hover:text-white"><PlusCircle size={20}/></button>
             </div>
 
-            {/* CONTENIDO INTERNO: HABITACIONES Y DISPOSITIVOS (Grid Técnico) - Más compacto */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {casa.dependencies?.map(hab => (
-                <div key={hab.id} className="bg-[#10101a] rounded-2xl p-6 border border-white/5 group transition-all hover:bg-black/20">
-                  <div className="flex justify-between items-center mb-5">
-                    <div className="flex items-center gap-3">
-                       <Layout size={18} className="text-blue-500"/>
-                       <div>
-                            <span className="font-black uppercase italic text-sm text-white tracking-tight leading-none">{hab.name}</span>
-                            <span className="text-[8px] font-mono font-bold text-slate-500 uppercase tracking-widest block mt-1">{hab.type}_NODE</span>
-                       </div>
-                    </div>
-                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setParentId({casa: casa.id, hab: hab.id}); setShowModal('dev'); }} className="text-[8px] font-black bg-white/5 px-2.5 py-1 rounded text-blue-400 uppercase tracking-widest hover:bg-blue-600 hover:text-white">+ Disp</button>
-                      <button onClick={() => deleteRecord('dependencies', hab.id)} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
-                    </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {casa.rooms.map(room => (
+                <div key={room.id} className="bg-slate-800/40 border border-white/5 rounded-[2rem] p-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{room.type}</span>
+                    <button onClick={() => { setParentId({ ...parentId, hab: room.id }); setShowModal('dev'); }} className="text-slate-500 hover:text-white"><Plus size={16}/></button>
                   </div>
+                  <h5 className="font-bold text-slate-200 uppercase text-xs mb-4">{room.name}</h5>
                   
-                  {/* DISPOSITIVOS (Pills Neón) - Más pequeños y densos */}
-                  <div className="flex flex-wrap gap-2 pt-4 border-t border-white/5">
-                    {hab.devices?.length > 0 ? hab.devices.map(dev => (
-                      <div key={dev.id} className={`flex items-center gap-2 pl-2 pr-3 py-2 rounded-full border transition-all active:scale-95 group/dev ${dev.status ? 'bg-cyan-950 border-cyan-500 text-cyan-100 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'bg-[#0a0a12] border-white/5 text-slate-600'}`}>
-                        <button onClick={() => toggleDevice(dev.id, dev.status)} className="p-1 rounded-full bg-black/50 hover:bg-black transition-colors"><Power size={10}/></button>
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-tighter leading-none">{dev.name}</span>
-                        <button onClick={() => deleteRecord('devices', dev.id)} className="ml-1 opacity-0 group-hover/dev:opacity-100 hover:text-red-400 transition-all"><X size={10}/></button>
+                  <div className="space-y-2">
+                    {room.devices.map(dev => (
+                      <div key={dev.id} className="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${dev.status ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`} />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{dev.name}</span>
+                        </div>
+                        <span className="text-[9px] font-black text-slate-600 uppercase">{dev.type}</span>
                       </div>
-                    )) : <p className="text-[9px] text-slate-700 font-bold uppercase italic tracking-widest py-1">Sin terminales detectados</p>}
+                    ))}
                   </div>
                 </div>
               ))}
@@ -194,109 +175,50 @@ const AdminStats = () => {
         ))}
       </div>
 
-      {/* MODAL SUPREMO FPP (Glassmorphism Modal) - Menos padding, inputs más pequeños */}
+      {/* MODAL UNIFICADO */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xl z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-[#0a0a12] w-full max-w-lg rounded-3xl shadow-[0_0_80px_-10px_rgba(59,130,246,0.15)] overflow-hidden relative border border-white/10">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-600/10 blur-[50px] rounded-full"/>
-            <div className="bg-[#07070e] p-6 text-white flex justify-between items-center relative border-b border-white/5">
-              <div>
-                <p className="text-blue-500 font-mono text-[9px] uppercase tracking-[0.5em] mb-1.5 flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"/> PROVISION_PROTOCOL
-                </p>
-                <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none">REGISTRAR {showModal.toUpperCase()}</h3>
-              </div>
-              <button onClick={() => setShowModal(null)} className="p-3 bg-white/5 text-slate-600 hover:text-white rounded-xl transition-all"><X size={24}/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="bg-[#1e293b] w-full max-w-md rounded-[2.5rem] border border-white/10 p-8 shadow-2xl animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-black text-white uppercase italic italic">Configurar <span className="text-blue-500">{showModal}</span></h3>
+              <button onClick={() => setShowModal(null)} className="text-slate-500 hover:text-white"><X /></button>
             </div>
 
-            <form onSubmit={handleCreate} className="p-8 space-y-6 relative z-10">
-              
-              {/* FORMULARIO VIVIENDA (FPP Style) */}
+            <form onSubmit={showModal === 'casa' ? handleCreateCasa : showModal === 'hab' ? handleCreateHab : handleCreateDev} className="space-y-5">
               {showModal === 'casa' && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="group">
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1.5">System_Alias</label>
-                      <input required className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-sm focus:border-blue-500 transition-all outline-none" placeholder="EJ: ALPHA_PROT_01" value={formCasa.name} onChange={e => setFormCasa({...formCasa, name: e.target.value})} />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1.5">Asign_Owner</label>
-                      <select required className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-xs focus:border-blue-500 outline-none cursor-pointer" value={formCasa.owner_id} onChange={e => setFormCasa({...formCasa, owner_id: e.target.value})}>
-                        <option value="" className="bg-[#10101a]">-- SELECT_OWNER --</option>
-                        {users.map(u => <option key={u.id} value={u.id} className="bg-[#10101a]">{u.name || u.email}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1.5">Geo_Ref / Address</label>
-                    <input required className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-xs focus:border-blue-500 outline-none" placeholder="GRID / STREET / ZONE" value={formCasa.address} onChange={e => setFormCasa({...formCasa, address: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 items-end">
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1.5">Core_Category</label>
-                      <select className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-xs focus:border-blue-500 outline-none" value={formCasa.category} onChange={e => setFormCasa({...formCasa, category: e.target.value})}>
-                        <option value="Residencial">RESIDENCIAL</option>
-                        <option value="Comercial">COMERCIAL</option>
-                        <option value="Industrial">INDUSTRIAL</option>
-                      </select>
-                    </div>
-                    <div className="pb-1">
-                      <div className="flex justify-between mb-3 px-1.5"><label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Energy_Limit</label><span className="text-[11px] font-mono font-bold text-cyan-400">{formCasa.consumption_limit}kWh</span></div>
-                      <input type="range" min="10" max="1000" step="10" className="w-full h-1 bg-white/10 rounded appearance-none cursor-pointer accent-cyan-500" value={formCasa.consumption_limit} onChange={e => setFormCasa({...formCasa, consumption_limit: e.target.value})} />
-                    </div>
-                  </div>
-                </div>
+                <>
+                  <input required placeholder="Nombre Propiedad" className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formCasa.name} onChange={e => setFormCasa({...formCasa, name: e.target.value})} />
+                  <select required className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formCasa.owner_id} onChange={e => setFormCasa({...formCasa, owner_id: e.target.value})}>
+                    <option value="">Seleccionar Dueño</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                  </select>
+                  <input placeholder="Dirección Física" className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formCasa.address} onChange={e => setFormCasa({...formCasa, address: e.target.value})} />
+                </>
               )}
 
-              {/* FORMULARIO HABITACIÓN (Selector Técnico) */}
               {showModal === 'hab' && (
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[9px] font-black text-slate-500 uppercase mb-1.5 block ml-1.5">Area_Alias</label>
-                    <input required className="w-full bg-[#10101a] p-5 rounded-2xl border border-white/5 text-xl font-black text-white outline-none focus:ring-2 ring-blue-500 transition-all uppercase italic placeholder:text-slate-800 placeholder:not-italic" placeholder="NOMBRE_ZONA" value={formHab.name} onChange={e => setFormHab({...formHab, name: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-500 uppercase mb-2.5 block ml-1.5">Environment_Type_Grid</label>
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {['Salón', 'Cocina', 'Dormitorio', 'Baño', 'Garaje', 'Exterior'].map(t => (
-                        <button key={t} type="button" onClick={() => setFormHab({...formHab, type: t})} className={`p-3 rounded-lg border text-[9px] font-mono font-bold uppercase transition-all active:scale-95 ${formHab.type === t ? 'border-blue-500 bg-blue-950 text-blue-200 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'border-white/5 text-slate-600 hover:border-white/10 hover:text-slate-400'}`}>
-                          {t}_MODE
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <>
+                  <input required placeholder="Nombre Dependencia (Ej: Living)" className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formHab.name} onChange={e => setFormHab({...formHab, name: e.target.value})} />
+                  <select className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formHab.type} onChange={e => setFormHab({...formHab, type: e.target.value})}>
+                    <option>Salón</option><option>Cocina</option><option>Habitación</option><option>Exterior</option><option>Laboratorio</option>
+                  </select>
+                </>
               )}
 
-              {/* FORMULARIO DISPOSITIVO (Parámetros Técnicos) */}
               {showModal === 'dev' && (
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[9px] font-black text-slate-500 uppercase mb-1.5 block ml-1.5">Terminal_Alias</label>
-                    <input required className="w-full bg-[#10101a] p-5 rounded-2xl border border-white/5 text-xl font-black text-white outline-none focus:ring-2 ring-blue-500 transition-all uppercase italic placeholder:text-slate-800 placeholder:not-italic" placeholder="ID_DISPOSITIVO" value={formDev.name} onChange={e => setFormDev({...formDev, name: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase mb-1.5 block ml-1.5">Hardware_Core</label>
-                      <select className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-xs focus:border-blue-500 outline-none" value={formDev.type} onChange={e => setFormDev({...formDev, type: e.target.value})}>
-                        <option value="Iluminación" className="bg-[#10101a]">Iluminación_Sys</option>
-                        <option value="Climatización" className="bg-[#10101a]">Clima_Sys</option>
-                        <option value="Seguridad" className="bg-[#10101a]">Security_Sys</option>
-                        <option value="Multimedia" className="bg-[#10101a]">Multi_Media_Sys</option>
-                        <option value="Electrodoméstico" className="bg-[#10101a]">Appliances_Sys</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase mb-1.5 block ml-1.5">Base_Consumption (W)</label>
-                      <input type="number" className="w-full bg-[#10101a] p-4 rounded-xl border border-white/5 text-white font-mono text-xs focus:border-blue-500 outline-none" value={formDev.consumption_base} onChange={e => setFormDev({...formDev, consumption_base: e.target.value})} />
-                    </div>
-                  </div>
-                </div>
+                <>
+                  <input required placeholder="Nombre Dispositivo" className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formDev.name} onChange={e => setFormDev({...formDev, name: e.target.value})} />
+                  <select className="w-full bg-slate-900 border border-white/5 p-4 rounded-xl text-white font-bold" value={formDev.type} onChange={e => setFormDev({...formDev, type: e.target.value})}>
+                    <option value="Iluminación">Iluminación</option>
+                    <option value="Climatización">Climatización</option>
+                    <option value="Seguridad">Seguridad</option>
+                    <option value="Electro">Electrodoméstico</option>
+                  </select>
+                </>
               )}
 
-              <button disabled={submitting} className="w-full relative group overflow-hidden bg-white text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.3em] transition-all flex items-center justify-center gap-3 active:scale-95 disabled:bg-slate-700 disabled:text-slate-400">
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                {submitting ? <Loader2 className="animate-spin relative z-10"/> : <><Check size={18} className="relative z-10"/> <span className="relative z-10 group-hover:text-white transition-colors">Inicializar_Protocolo</span></>}
+              <button disabled={submitting} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20">
+                {submitting ? <Loader2 className="animate-spin mx-auto" /> : 'Confirmar y Guardar'}
               </button>
             </form>
           </div>
